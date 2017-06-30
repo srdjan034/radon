@@ -9,9 +9,7 @@ from Particle import *
 
 
 def obradiCesticu(p):
-
     while True:
-
         impact_distance = distrib(half_path)
         fi0 = 2 * pi * random()
         theta0 = acos(1 - 2 * random())
@@ -49,9 +47,7 @@ def obradiCesticu(p):
                 else:
                     return ("WALL", 1)
 
-
 def main():
-
     particles_num = int(sys.argv[1])
 
     spark = SparkSession.builder.appName("Radon").getOrCreate()
