@@ -7,7 +7,6 @@ from pyspark.sql import SparkSession
 from pyspark.context import SparkContext
 from Particle import *
 
-
 def obradiCesticu(p):
     while True:
         impact_distance = distrib(half_path)
