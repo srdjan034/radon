@@ -1,0 +1,7 @@
+{
+  "host" : "localhost",
+  "port" : 5672,
+  "brojCestica": 4,
+  "brojProizvodjaca": 2,
+  "brojTacakaUJednojPutanji": 10000
+}
