@@ -49,10 +49,7 @@ def counter(ch, method, properties, poruka):
         # Odjavi se sa svog kanala
         ch.basic_ack(delivery_tag=method.delivery_tag)
         ch.basic_cancel(consumer_tag='particleCounter')
-
-        # Obrisi kanale
-        ch.queue_delete(queue='particleCounter')
-        ch.queue_delete(queue='end')
+	
         sys.exit(0)
 
 if __name__ == "__main__":
