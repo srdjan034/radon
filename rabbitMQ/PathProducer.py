@@ -1,11 +1,9 @@
-import time
-import sys
 import pika
 from Particle import *
 from threading import Thread
 import json
-from pprint import pprint
-
+import sys
+import time
 
 channel = None
 connection = None
@@ -64,8 +62,8 @@ if __name__ == "__main__":
                               ))
         #print str(x) + ' - ' + str(y) + ' - ' + str(z) + ' - ' + str(half_life)
 
-    args = {'x-max-length' : particles_num * 3} # Maksimalan broj poruka u redu putanja
-    channel.queue_declare(queue='path', arguments=args)
+    args = {'x-max-length' : 40} # Maksimalan broj poruka u redu putanja
+    channel.queue_declare(queue='path')#, arguments=args)
 
     # u posebnoj niti cekaj na poruku od RadonCounter.py da je simulacija zavrsena
     thread = Thread(target = CekajNaPorukuZaKraj)
@@ -82,15 +80,49 @@ if __name__ == "__main__":
             zList = []
             life_time_step_List = []
 
+            x = 0
+            y = 0
+            z = 0
+
+            xMin = sys.float_info.max
+            xMax = sys.float_info.min
+            yMin = sys.float_info.max
+            yMax = sys.float_info.min
+            zMin = sys.float_info.max
+            zMax = sys.float_info.min
+
+            life_time_step_sum = 0
+
+            x_last = 0
+            y_last = 0
+            z_last = 0
+
             # kreiraj putanju od pathPoints_num tacaka
-            for i in range(pathPoints_num):
+            for j in range(pathPoints_num):
+
                 impact_distance = distrib(half_path)
                 fi0 = 2 * pi * random()
                 theta0 = acos(1 - 2 * random())
 
-                xList.append(impact_distance * sin(theta0) * cos(fi0))
-                yList.append(impact_distance * sin(theta0) * sin(fi0))
-                zList.append(impact_distance * cos(theta0))
+                x = impact_distance * sin(theta0) * cos(fi0)
+                y = impact_distance * sin(theta0) * sin(fi0)
+                z = impact_distance * cos(theta0)
+
+                x_last += x
+                y_last += y
+                z_last += z
+
+                if x_last < xMin : xMin = x_last
+                if y_last < yMin : yMin = y_last
+                if z_last < zMin : zMin = z_last
+
+                if x_last > xMax : xMax = x_last
+                if y_last > yMax : yMax = y_last
+                if z_last > zMax : zMax = z_last
+
+                xList.append(x)
+                yList.append(y)
+                zList.append(z)
 
                 v = speed_maxwell(0.2, 293.0)
 
@@ -98,16 +130,30 @@ if __name__ == "__main__":
 
                 life_time_step = impact_distance / v_magnitude
                 life_time_step_List.append(life_time_step)
+                life_time_step_sum += life_time_step
 
-            points = '{ "x" : ' + str(xList) + ', "y" : ' + str(yList) + ', "z" : ' + str(zList)  \
-                     + ', "life_time_step" : ' + str(life_time_step_List)  + ' }'
+            points = '{   "xMin" : ' + str(xMin) \
+                     + ', "yMin" :' + str(yMin) \
+                     + ', "zMin" :' + str(zMin) \
+                     + ', "xMax" : ' + str(xMax) \
+                     + ', "yMax" :' + str(yMax) \
+                     + ', "zMax" :' + str(zMax) \
+                     + ', "x_last" :' + str(x_last) \
+                     + ', "y_last" :' + str(y_last) \
+                     + ', "z_last" :' + str(z_last) \
+                     + ', "life_time_step_sum" :' + str(life_time_step_sum) \
+                     + ', "x" : ' + ('[' + ', '.join(str(x) for x in xList) + ']') \
+                     + ', "y" : ' + ('[' + ', '.join(str(x) for x in yList) + ']') \
+                     + ', "z" : ' + ('[' + ', '.join(str(x) for x in zList) + ']') \
+                     + ', "life_time_step" : ' + ('[' +', '.join(str(x) for x in life_time_step_List) + ']') \
+                     + ' }'
 
             # posalji putanju u json formatu
             channel.basic_publish(exchange='',
-                                routing_key='path',
+                               routing_key='path',
                                 body=points,
                                 properties=pika.BasicProperties(
-                                    delivery_mode=1
+                                    delivery_mode=2
                                 ))
 
         channel.queue_delete(queue='pocetne_vrednosti')
