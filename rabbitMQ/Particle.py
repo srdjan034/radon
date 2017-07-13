@@ -1,5 +1,6 @@
 from math import *
-from random import random, seed
+from random import random, seed, getstate, setstate
+
 
 # Konstante
 INIT=-1
