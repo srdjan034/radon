@@ -26,6 +26,8 @@ def CekajNaPorukuZaKraj():
 
 if __name__ == "__main__":
 
+    seed(1)
+
     with open('configuration.json') as data_file:
         conf = json.load(data_file)
 
@@ -73,12 +75,8 @@ if __name__ == "__main__":
     v = 0.0
 
     try:
+        start_time = time.time()
         while running:
-
-            xList = []
-            yList = []
-            zList = []
-            life_time_step_List = []
 
             x = 0
             y = 0
@@ -96,6 +94,8 @@ if __name__ == "__main__":
             x_last = 0
             y_last = 0
             z_last = 0
+
+            seed_state_list = getstate()
 
             # kreiraj putanju od pathPoints_num tacaka
             for j in range(pathPoints_num):
@@ -120,19 +120,14 @@ if __name__ == "__main__":
                 if y_last > yMax : yMax = y_last
                 if z_last > zMax : zMax = z_last
 
-                xList.append(x)
-                yList.append(y)
-                zList.append(z)
-
                 v = speed_maxwell(0.2, 293.0)
 
                 v_magnitude = sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
 
                 life_time_step = impact_distance / v_magnitude
-                life_time_step_List.append(life_time_step)
                 life_time_step_sum += life_time_step
 
-            points = '{   "xMin" : ' + str(xMin) \
+            points = '{ "xMin" : ' + str(xMin) \
                      + ', "yMin" :' + str(yMin) \
                      + ', "zMin" :' + str(zMin) \
                      + ', "xMax" : ' + str(xMax) \
@@ -142,10 +137,9 @@ if __name__ == "__main__":
                      + ', "y_last" :' + str(y_last) \
                      + ', "z_last" :' + str(z_last) \
                      + ', "life_time_step_sum" :' + str(life_time_step_sum) \
-                     + ', "x" : ' + ('[' + ', '.join(str(x) for x in xList) + ']') \
-                     + ', "y" : ' + ('[' + ', '.join(str(x) for x in yList) + ']') \
-                     + ', "z" : ' + ('[' + ', '.join(str(x) for x in zList) + ']') \
-                     + ', "life_time_step" : ' + ('[' +', '.join(str(x) for x in life_time_step_List) + ']') \
+                     + ', "seed_state_0" :' + str(seed_state_list[0]) \
+                     + ', "seed_state_1" : ' + ('[' + ', '.join(str(x) for x in seed_state_list[1]) + ']') \
+                     + ', "seed_state_2" :' + (str(-1) if seed_state_list[2] is None else str(seed_state_list[2])) \
                      + ' }'
 
             # posalji putanju u json formatu
