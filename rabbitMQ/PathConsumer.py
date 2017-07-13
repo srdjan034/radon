@@ -7,10 +7,11 @@ particle = None
 connection = None
 channel = None
 particleId = 0
+pathPoints_num = 0
 
 def uzmiPocetneVrednosti(ch, method, properties, pointsJson):
     global particle
-
+    print "opa"
     initialValues = json.loads(pointsJson)
     #print(str(initialValues))
     id = int(initialValues['id'])
@@ -95,15 +96,11 @@ def obradiPutanju(ch, method, properties, pointsJson):
     global connection
     global channel
     global particleId
+    global particles_num
     global ii
     message = ""
 
     pointsData = json.loads(pointsJson)
-
-    xList = pointsData['x']
-    yList = pointsData['y']
-    zList = pointsData['z']
-    life_time_step = pointsData['life_time_step']
 
     xMin = pointsData['xMin']
     xMax = pointsData['xMax']
@@ -118,30 +115,45 @@ def obradiPutanju(ch, method, properties, pointsJson):
 
     life_time_step_sum = pointsData['life_time_step_sum']
 
+
     # proveri da li "bounding box" putanje iskace iz cilindra za trenutne koordinate cestice
     if checkBoundingBox(particle.x, particle.y, particle.z, xMin, yMin, zMin, xMax, yMax, zMax, life_time_step_sum):
-        for i in range(len(xList)):
-            x = particle.x + xList[i]
-            y = particle.y + yList[i]
-            z = particle.z + zList[i]
+
+        seed_state_0 = int(pointsData['seed_state_0'])
+        seed_state_1 = tuple(int(s) for s in pointsData['seed_state_1'])
+        seed_state_2 = None if pointsData['seed_state_2'] == "-1" else pointsData['seed_state_2']
+
+        seed_state_tuple = (seed_state_0, seed_state_1, seed_state_2)
+        setstate(seed_state_tuple)
+
+        for j in range(pathPoints_num):
+            impact_distance = distrib(half_path)
+            fi0 = 2 * pi * random()
+            theta0 = acos(1 - 2 * random())
+
+            x = particle.x + impact_distance * sin(theta0) * cos(fi0)
+            y = particle.y + impact_distance * sin(theta0) * sin(fi0)
+            z = particle.z + impact_distance * cos(theta0)
+            v = speed_maxwell(0.2, 293.0)
+            v_magnitude = sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
 
             pos_status = in_position(x, y, z)
 
             if pos_status == AIR:
-                particle.life_time += life_time_step[i]
+                particle.life_time += impact_distance / v_magnitude
 
                 if particle.life_time >= particle.half_life:
                     message = "AIR"
                 else:
                     particle.set(x, y, z)
                     continue
+
             # Cestica se nije raspala
             else:
-                particle.life_time += life_time_step[i]
+                particle.life_time += impact_distance / v_magnitude
 
                 if particle.life_time > particle.half_life:
                     message = "AIR"
-
                 else:
                     if pos_status == BOTTOM:
                         message = "BOTTOM"
@@ -150,6 +162,7 @@ def obradiPutanju(ch, method, properties, pointsJson):
                     else:
                         message = "WALL"
             break
+
     else:
         particle.life_time += life_time_step_sum
         particle.set(particle.x + x_last, particle.y + y_last, particle.z + z_last)
@@ -170,8 +183,6 @@ def obradiPutanju(ch, method, properties, pointsJson):
         print "(" + str(particle.x) + "," + str(particle.y) + "," + str(particle.z) + ")"
         sys.exit(0)
 
-
-
 if __name__ == "__main__":
 
     try:
@@ -183,6 +194,7 @@ if __name__ == "__main__":
         host = conf['host']
         port = int(conf['port'])
         particles_num = int(conf['brojCestica'])
+        pathPoints_num = int(conf['brojTacakaUJednojPutanji'])
 
         credentials = pika.PlainCredentials(conf['user'], conf['pass'])
         connection = pika.BlockingConnection(pika.ConnectionParameters(host=host, port=port, credentials=credentials))
