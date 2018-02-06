@@ -146,7 +146,7 @@ void main(int argc, char *argv[])
          
         fclose(f);
         
-        // Posalji poruke za kraj
+        // Send messages 
         int n = 1;
         for(i=1; i < size; i++)
             MPI_Send(&n, 1, MPI_INT, i, 0, MPI_COMM_WORLD);

@@ -1,0 +1,8 @@
+{
+    "nodeCount": 2,
+    "processorsPerNode": 16,
+    "producerCount": 21,
+    "consumerCount": 10,
+    "partialTrajectoryLength": 50000,
+    "particleCount": 32
+}
