@@ -1,9 +1,3 @@
-/* 
- * File:   particle.h
- * Author: srdjan
- *
- * Created on January 23, 2018, 1:14 PM
- */
 
 #include <math.h>
 #include <time.h>
@@ -28,7 +22,8 @@ enum DEPORTATION_PLACE
 	WALL = 1,
 	TOP = 2,
 	BOTTOM = 3,
-        DECOMPOSED = 4
+        DECOMPOSED = 4,
+        NONE
 };
 
 typedef struct
@@ -36,11 +31,12 @@ typedef struct
     int id;
     double life_time;
     double half_life;
-    enum DEPORTATION_PLACE status;
 
     double z;
     double x;
     double y;
+    
+    enum DEPORTATION_PLACE status;
 
 } Particle;
 
@@ -56,9 +52,17 @@ typedef struct
     double yLast;
     double zLast;
     double lifeTimeStepSum;
-    //unsigned int seed;
     struct drand48_data seed;
 } Partial_trajectory;
+
+typedef struct
+{
+    int nodeCount;
+    int processorsPerNode;
+    int partialTrajectoryLength;
+    int particleCount;
+
+} Conf;
 
 void initialize()
 {
@@ -428,8 +432,74 @@ enum DEPORTATION_PLACE checkBoundingBox(Particle * particle, Partial_trajectory 
 void * waitForSignal(void * t)
 {
     int n;
-    MPI_Recv(&n, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(&n, 1, MPI_INT, 0, 5, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     
     int * running = (int * ) t;
     *running = 0;
+}
+
+void putPointerAfterColon(char ** s_tmp)
+{
+    int i = 0;
+    while(**s_tmp != ':')
+        (*s_tmp)++;
+    (*s_tmp)++;
+}
+
+/*
+    Lightweight Conf.json parser
+ */
+int readJsonIntValue(char * s, char * jsonFieldName, int * value)
+{
+    char * s_tmp = strstr(s, jsonFieldName);
+    
+    if(s_tmp != NULL)
+    {
+        int i;
+        for(i = 0; i < strlen(jsonFieldName); i++)
+            s_tmp++;
+        
+        putPointerAfterColon(&s_tmp);
+
+        sscanf(s_tmp, "%d", value);
+        
+        return 1;
+    }
+    else
+        return -1;
+}
+
+/*
+    Lightweight Conf.json parser
+ */
+Conf * readConf(char fileName[])
+{
+    FILE * f = fopen(fileName, "rb");
+    
+    Conf * conf = (Conf *) malloc(sizeof(Conf)); 
+    
+    char * buffer = NULL;
+    long length;
+    
+    if (f)
+    {
+        fseek (f, 0, SEEK_END);
+        length = ftell (f);
+        fseek (f, 0, SEEK_SET);
+        buffer = malloc (length);
+        
+        if (buffer)
+        {
+          fread (buffer, 1, length, f);
+        }
+    }
+    
+    readJsonIntValue(buffer, "nodeCount", &conf->nodeCount);
+    readJsonIntValue(buffer, "processorsPerNode", &conf->processorsPerNode);
+    readJsonIntValue(buffer, "partialTrajectoryLength", &conf->partialTrajectoryLength);
+    readJsonIntValue(buffer, "particleCount", &conf->particleCount);
+    
+    fclose(f);
+    
+    return conf;
 }

@@ -1,13 +1,11 @@
 #!/bin/sh
-#PBS -N Parametarski
+#PBS -N SimulacijaCestica_BezReda
 #PBS -q batch
-#PBS -l nodes=2:ppn=16
 
 cd $PBS_O_WORKDIR
 
 module load openmpi-pmf-x86_64
 
-mpicc radon_mpi.c -o radon
+mpicc -o2 radon_mpi_one_consumer.c -o radon 
 
 mpirun ./radon
-
