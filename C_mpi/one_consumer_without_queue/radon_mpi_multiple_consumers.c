@@ -4,12 +4,11 @@ void * consumerListener(void * p);
 void initialParticlePositionObserver(Conf * conf, MPI_Datatype * dt_particle, int * running);
 void runQueue(Conf * conf, MPI_Datatype * dt_particle, MPI_Datatype * dt_point, int consumerCount, int producerCount);
 void simulateParticles(MPI_Datatype * dt_particle, MPI_Datatype * dt_point, int rank, Conf * conf);
-void generatePathTrajektories(int rank, MPI_Datatype  *dt_point,int partialTrajectoryLength, struct drand48_data * buffer_seed);
+void generatePathTrajektories(int rank, MPI_Datatype  *dt_point,int partialTrajectoryLength);
 
 void main(int argc, char *argv[]) 
 {
     Conf * conf = readConf("conf.json");
-
     // mpi
     int rank, size; 
     MPI_Datatype dt_point;
@@ -35,15 +34,13 @@ void main(int argc, char *argv[])
         {   
             runQueue(conf,&dt_particle, &dt_point, conf->consumerCount, conf->producerCount);
         }
-        else if(0 < rank && rank <= conf->consumerCount) // Consumers
+        else if(rank <= conf->consumerCount) // Consumers
         {
             simulateParticles(&dt_particle, &dt_point, rank, conf);
         }
         else if(conf->consumerCount < rank) // Producers
         {
-            struct drand48_data buffer_seed;
-            srand48_r(rank, &buffer_seed);
-            generatePathTrajektories(rank, &dt_point, conf->partialTrajectoryLength, &buffer_seed);
+            generatePathTrajektories(rank, &dt_point, conf->partialTrajectoryLength);
         }
     }
     else if(rank == 0)
@@ -65,11 +62,11 @@ void * consumerListener(void * v)
     MPI_Status status;
     int consumerRank;
     
-    MPI_Datatype * dt_point;
+    MPI_Datatype dt_point;
     MPI_Type_contiguous(11, MPI_DOUBLE, &dt_point);
     MPI_Type_commit(&dt_point);
     
-    MPI_Datatype * dt_particle;
+    MPI_Datatype dt_particle;
     MPI_Type_contiguous(7, MPI_DOUBLE, &dt_particle);
     MPI_Type_commit(&dt_particle);
     
@@ -93,29 +90,27 @@ void * consumerListener(void * v)
 
     for(i = 0; i < conf->consumerCount; i++)
     {   
-        MPI_Irecv(&buffer[i], 1, MPI_INT, i+1, 4, MPI_COMM_WORLD, &requests[i]);
+        MPI_Irecv(&buffer[i], 1, MPI_INT, i+1, PARTICLE_REQUEST, MPI_COMM_WORLD, &requests[i]);
     } 
     
     while(consumerCount > 0)
     {
+        MPI_Testsome(conf->consumerCount, requests, &outcount, array_of_indices, array_of_statuses);
         
-        MPI_Testsome(conf->consumerCount, requests, &outcount, array_of_indices, array_of_statuses); 
-
         // For every completed requests
         for(i = 0; i < outcount; i++)
-        {
-           consumerRank = buffer[array_of_indices[i]];
-           
+        {  
            if(nextParticleIndex < particleCount)
            {
-                MPI_Send(&particles[nextParticleIndex++], 1, dt_particle, consumerRank, 4, MPI_COMM_WORLD);
-                MPI_Irecv(&buffer[array_of_indices[i]], 1, MPI_INT, array_of_statuses[i].MPI_SOURCE, 4, MPI_COMM_WORLD, &requests[i]);
+                MPI_Send(&(particles[nextParticleIndex]), 1, dt_particle, array_of_statuses[i].MPI_SOURCE, PARTICLE, MPI_COMM_WORLD);
+                MPI_Irecv(&buffer[array_of_indices[i]], 1, MPI_INT, array_of_statuses[i].MPI_SOURCE, PARTICLE_REQUEST, MPI_COMM_WORLD, &requests[array_of_indices[i]]);
+                nextParticleIndex++;
            }
            else
            {
                Particle p;
                p.status = NONE;
-               MPI_Send(&p, 1, dt_particle, consumerRank, 4, MPI_COMM_WORLD);
+               MPI_Send(&p, 1, dt_particle, array_of_statuses[i].MPI_SOURCE, PARTICLE, MPI_COMM_WORLD);
                consumerCount--;;
            }
         }
@@ -143,88 +138,84 @@ void initialParticlePositionObserver(Conf * conf, MPI_Datatype * dt_particle, in
 void runQueue(Conf * conf, MPI_Datatype * dt_particle, MPI_Datatype * dt_point, int consumerCount, int producerCount)
 {  
     int running = 1;
-    initialParticlePositionObserver(conf, dt_particle, &running);
     
     Partial_trajectory * partial_trajectory;
     
-    // Consumer
-    MPI_Request array_of_consumer_requests[consumerCount];
-    MPI_Status array_of_consumer_statuses[consumerCount];
-    int outConsumerCount = 0;
-    int array_of_consumer_indices[consumerCount];
-    int bufferConsumer[consumerCount];
-    
-    // Producer
-    MPI_Request array_of_producer_requests[producerCount];
-    MPI_Status array_of_producer_statuses[producerCount];
-    int outProducerCount = 0;
-    int array_of_producer_indices[producerCount];
+    MPI_Request consumerRequests[consumerCount];
+    MPI_Status  consumerStatuses[consumerCount];
+    int outCountConsumers = 0;
+    int array_of_indices_consumers[consumerCount];
+ 
+    MPI_Request producerRequests[producerCount];
+    MPI_Status  producerStatuses[producerCount];
+    int outCountProducers = 0;
+    int array_of_indices_producers[producerCount];
+
+    int bufferConsumerTrajectoryRequest[consumerCount];
     Partial_trajectory bufferProducer[producerCount];
     
-    MPI_Request request;
-    MPI_Status status;
-    int i;
-    int flag;
+    int i, j;
     
-    // Consumers 
+    initialParticlePositionObserver(conf, dt_particle, &running);
+    
+    // Consumers
     for(i = 0; i < consumerCount; i++)
     {   
-        MPI_Irecv(&bufferConsumer[i], 1, MPI_INT, i + 1, 1, MPI_COMM_WORLD, &array_of_consumer_requests[i]);
+        MPI_Irecv(&bufferConsumerTrajectoryRequest[i], 1, MPI_INT, i + 1, PARTIAL_TRAJECTORY_REQUEST, MPI_COMM_WORLD, &consumerRequests[i]);
     }
     
     // Producers
-    for(i = consumerCount; i < consumerCount + producerCount; i++)
+    for(i = consumerCount, j = 0; i < consumerCount + producerCount; i++, j++)
     {   
-        MPI_Irecv(&bufferProducer[i-consumerCount], 1, *dt_point, i + 1, 2, MPI_COMM_WORLD, &array_of_producer_requests[i-consumerCount]);
+        MPI_Irecv(&bufferProducer[j], 1, *dt_point, i + 1, PARTIAL_TRAJECTORY, MPI_COMM_WORLD, &producerRequests[j]);
     }
+    
+    int indexProducer = -1;
+    int indexConsumer = -1;
     
     while(running)
     {
-        // Cekaj na zahteve za putanjama od potrosaca
-        while(outConsumerCount == 0 && running)
-        {
-            MPI_Testsome(consumerCount, array_of_consumer_requests, &outConsumerCount, array_of_consumer_indices, array_of_consumer_statuses);
-        }
+        // Cekaj na putanje
+        while(outCountProducers == 0 && running)
+            MPI_Testsome(producerCount, producerRequests, &outCountProducers, array_of_indices_producers, producerStatuses); 
         
-        // Sve dok ne obradis sve zahteve za putanjama
-        while(outConsumerCount > 0 && running)
-        {           
-            // Cekaj na putanje od proizvodjaca
-            while(outProducerCount == 0 && running)
-               MPI_Testsome(producerCount, array_of_producer_requests, &outProducerCount, array_of_producer_indices, array_of_producer_statuses); 
-            
-            // Salji putanje
-            while(outConsumerCount > 0 && outProducerCount > 0 && running)
+        // Sve dok ne posaljes sve putanje
+        while(outCountProducers && running)
+        {
+            // Pokupi sve zahteve za putanjama
+            while( outCountConsumers == 0 && running)
             {
-                outConsumerCount--;
-                outProducerCount--;
+                MPI_Testsome(consumerCount, consumerRequests, &outCountConsumers, array_of_indices_consumers, consumerStatuses); 
+            }
+            
+            // Posalji sve putanje
+            while(outCountProducers && outCountConsumers && running)
+            {   
+                outCountProducers--;
+                outCountConsumers--;
+            
+                indexProducer = array_of_indices_producers[outCountProducers];
+                indexConsumer = array_of_indices_consumers[outCountConsumers];
+                        
+                partial_trajectory = &bufferProducer[indexProducer];
                 
-                // Preuzmi putanju i posalji je
-                partial_trajectory = &bufferProducer[array_of_producer_indices[outProducerCount]];
+                MPI_Send(partial_trajectory, 1, *dt_point, consumerStatuses[outCountConsumers].MPI_SOURCE, PARTIAL_TRAJECTORY, MPI_COMM_WORLD);
 
-                int consumerRank = bufferConsumer[array_of_consumer_indices[outConsumerCount]];
-                
-                MPI_Isend(partial_trajectory, 1, *dt_point, consumerRank, 3, MPI_COMM_WORLD, &request);
-                
-                // Prijavi se za cekanje potrosaca da se javi da li mu treba jos putanja
-                MPI_Irecv(&bufferConsumer[array_of_consumer_indices[outConsumerCount]], 
-                        1, MPI_INT, consumerRank, 1, MPI_COMM_WORLD, 
-                        &array_of_consumer_requests[outConsumerCount]);
-               
-                // Prijavi se za prihvatanje jos putanja od proizvodjaca cija je putanja upravo obradjena
-                MPI_Irecv(&bufferProducer[array_of_producer_indices[outProducerCount]], 
-                            1, *dt_point, array_of_producer_statuses[outProducerCount].MPI_SOURCE, 2, MPI_COMM_WORLD, 
-                            &array_of_producer_requests[outProducerCount]);
+            
+                MPI_Irecv(&bufferConsumerTrajectoryRequest[indexConsumer], 1, MPI_INT, consumerStatuses[outCountConsumers].MPI_SOURCE, PARTIAL_TRAJECTORY_REQUEST, MPI_COMM_WORLD, &consumerRequests[indexConsumer]);
+            
+                MPI_Irecv(&bufferProducer[indexProducer], 1, *dt_point, producerStatuses[outCountProducers].MPI_SOURCE, PARTIAL_TRAJECTORY, MPI_COMM_WORLD, &producerRequests[indexProducer]);
             }
         }
     }
-    
+
     // Posalji poruke za kraj
     int n = 1;
     for(i = conf->consumerCount + 1; i <= conf->consumerCount + conf->producerCount; i++)
-        MPI_Send(&n, 1, MPI_INT, i, 5, MPI_COMM_WORLD);
+        MPI_Send(&n, 1, MPI_INT, i, SIMULATION_END, MPI_COMM_WORLD);
     
     printf("Deljeni red se odjavljuje. \n");
+    
 }
 
 void simulateParticles(MPI_Datatype * dt_particle, MPI_Datatype * dt_point, int rank, Conf * conf)
@@ -244,13 +235,13 @@ void simulateParticles(MPI_Datatype * dt_particle, MPI_Datatype * dt_point, int 
     
     while(1)
     {
-        // Posalji zahtev za novom cesticom
-        MPI_Isend(&rank, 1, MPI_INT, 0, 4, MPI_COMM_WORLD, &request);
+        //Posalji zahtev za novom cesticom
+        MPI_Send(&rank, 1, MPI_INT, 0, PARTICLE_REQUEST, MPI_COMM_WORLD);
 
         // Prihvati cesticu
-        MPI_Recv(&particle, 1, *dt_particle, 0, 4, MPI_COMM_WORLD, &status);
+        MPI_Recv(&particle, 1, *dt_particle, 0, PARTICLE, MPI_COMM_WORLD, &status);
         
-        // Ako je status cestice NONE prekini saradom
+        // Ako je status cestice NONE prekini sa radom
         if(particle.status == NONE) break;
         
         count = 0;
@@ -258,10 +249,10 @@ void simulateParticles(MPI_Datatype * dt_particle, MPI_Datatype * dt_point, int 
         while(1)
         {
             // Posalji zahtev za parcijalnom putanjom
-            MPI_Send(&rank, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
+            MPI_Send(&rank, 1, MPI_INT, 0, PARTIAL_TRAJECTORY_REQUEST, MPI_COMM_WORLD);
             
             // Prihvati parcijalnu putanju
-            MPI_Recv(&partialTrajectory, 1, *dt_point, 0, 3, MPI_COMM_WORLD, &status);
+            MPI_Recv(&partialTrajectory, 1, *dt_point, 0, PARTIAL_TRAJECTORY, MPI_COMM_WORLD, &status);
  
             if( checkBoundingBox(&particle, &partialTrajectory) != AIR)
             {
@@ -312,12 +303,11 @@ void simulateParticles(MPI_Datatype * dt_particle, MPI_Datatype * dt_point, int 
     }
     
     printf("Simulator cestice %d. se odjavljuje\n", rank);
-    
     fclose(f);
 }
 
 
-void generatePathTrajektories(int rank, MPI_Datatype  *dt_point,int partialTrajectoryLength, struct drand48_data * buffer_seed)
+void generatePathTrajektories(int rank, MPI_Datatype  *dt_point,int partialTrajectoryLength)
 {
     int running = 1;
     
@@ -325,6 +315,7 @@ void generatePathTrajektories(int rank, MPI_Datatype  *dt_point,int partialTraje
         Wait for message to end in separate thread.
         Thread will set variable "running" to 0.
     */
+    
     pthread_t thread;
     pthread_attr_t attr;
     
@@ -333,6 +324,9 @@ void generatePathTrajektories(int rank, MPI_Datatype  *dt_point,int partialTraje
         
     pthread_create(&thread, &attr, waitForSignal, (void *) & running);
     
+    struct drand48_data buffer_seed;
+    srand48_r(rank, &buffer_seed);
+    
     MPI_Request request;
     int gauss_kon = 1;
     double gauss_y = 0.0;
@@ -340,10 +334,9 @@ void generatePathTrajektories(int rank, MPI_Datatype  *dt_point,int partialTraje
     while(running)
     {
         Partial_trajectory * partial_trajectory = 
-                    generatePartialTrajectory(&gauss_kon, &gauss_y, partialTrajectoryLength, buffer_seed);
+                    generatePartialTrajectory(&gauss_kon, &gauss_y, partialTrajectoryLength, &buffer_seed);
             
-        MPI_Isend(partial_trajectory, 1, *dt_point, 0, 2, MPI_COMM_WORLD, &request);
-            
+        MPI_Send(partial_trajectory, 1, *dt_point, 0, PARTIAL_TRAJECTORY, MPI_COMM_WORLD);  
         free(partial_trajectory);
     }
     

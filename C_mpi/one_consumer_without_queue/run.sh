@@ -1,7 +1,7 @@
 #!/bin/sh
 
-rm rezultat.csv
-rm SimulacijaCestica_BezReda*
+rm rezultat_*.csv
+rm SimulacijaCesticaJob*
 
 nodeCount=`python readJsonValue.py conf.json nodeCount`
 ppn=`python readJsonValue.py conf.json processorsPerNode`

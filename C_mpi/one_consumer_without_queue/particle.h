@@ -17,13 +17,23 @@ double tau;
 
 enum DEPORTATION_PLACE
 {
-	INIT = -1,
-	AIR = 0,
-	WALL = 1,
-	TOP = 2,
-	BOTTOM = 3,
-        DECOMPOSED = 4,
-        NONE
+    INIT = -1,
+    AIR = 0,
+    WALL = 1,
+    TOP = 2,
+    BOTTOM = 3,
+    DECOMPOSED = 4,
+    NONE
+};
+
+enum MESSAGE_TYPE
+{
+    PARTICLE_REQUEST = 1,
+    PARTICLE = 2,
+    PARTIAL_TRAJECTORY_REQUEST = 3,
+    PARTIAL_TRAJECTORY = 4,
+    SIMULATION_END
+    
 };
 
 typedef struct
@@ -59,6 +69,8 @@ typedef struct
 {
     int nodeCount;
     int processorsPerNode;
+    int producerCount;
+    int consumerCount;
     int partialTrajectoryLength;
     int particleCount;
 
@@ -73,13 +85,6 @@ void initialize()
     tau = 183/log(2);
 }
 
-/*
-double randomDoubleWithSeed(unsigned int * seed)
-{
-    return (double) rand_r(seed) / RAND_MAX ;
-}
- */
-
 double randomDoubleWithSeed(struct drand48_data * buffer_seed)
 {
     double value;
@@ -89,7 +94,7 @@ double randomDoubleWithSeed(struct drand48_data * buffer_seed)
 
 double distrib(double x, struct drand48_data * buffer_seed)
 {
-	return (-x*log(randomDoubleWithSeed(buffer_seed)));
+    return (-x*log(randomDoubleWithSeed(buffer_seed)));
 }
 
 double Gauss(int * gauss_kon, double * gauss_y, struct drand48_data * buffer_seed)
@@ -432,7 +437,7 @@ enum DEPORTATION_PLACE checkBoundingBox(Particle * particle, Partial_trajectory 
 void * waitForSignal(void * t)
 {
     int n;
-    MPI_Recv(&n, 1, MPI_INT, 0, 5, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(&n, 1, MPI_INT, 0, SIMULATION_END, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     
     int * running = (int * ) t;
     *running = 0;
@@ -496,6 +501,8 @@ Conf * readConf(char fileName[])
     
     readJsonIntValue(buffer, "nodeCount", &conf->nodeCount);
     readJsonIntValue(buffer, "processorsPerNode", &conf->processorsPerNode);
+    readJsonIntValue(buffer, "producerCount", &conf->producerCount);
+    readJsonIntValue(buffer, "consumerCount", &conf->consumerCount);
     readJsonIntValue(buffer, "partialTrajectoryLength", &conf->partialTrajectoryLength);
     readJsonIntValue(buffer, "particleCount", &conf->particleCount);
     
