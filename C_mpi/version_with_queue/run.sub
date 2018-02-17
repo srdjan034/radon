@@ -6,6 +6,6 @@ cd $PBS_O_WORKDIR
 
 module load openmpi-pmf-x86_64
 
-mpicc -o2 radon_mpi_multiple_consumers.c -o radon 
+mpicc -O2 radon_mpi_multiple_consumers.c -o radon 
 
 mpirun ./radon

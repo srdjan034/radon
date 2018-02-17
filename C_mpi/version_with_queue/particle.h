@@ -7,6 +7,8 @@
 #include <float.h>
 #include <unistd.h>
 #include <mpi.h> 
+#include <stddef.h>
+#include <string.h>
 
 // Job parameters
 double r;
@@ -14,16 +16,24 @@ double h;
 double half_path;
 double tau;
 
-
 enum DEPORTATION_PLACE
 {
-	INIT = -1,
-	AIR = 0,
-	WALL = 1,
-	TOP = 2,
-	BOTTOM = 3,
-        DECOMPOSED = 4,
-        NONE
+    INIT = -1,
+    AIR = 0,
+    WALL = 1,
+    TOP = 2,
+    BOTTOM = 3,
+    DECOMPOSED = 4,
+    NONE = 5
+};
+
+enum MESSAGE_TYPE
+{
+    PARTICLE_REQUEST = 10,
+    PARTICLE = 11,
+    PARTIAL_TRAJECTORY_REQUEST = 12,
+    PARTIAL_TRAJECTORY = 31,
+    SIMULATION_END = 14
 };
 
 typedef struct
@@ -52,7 +62,18 @@ typedef struct
     double yLast;
     double zLast;
     double lifeTimeStepSum;
-    struct drand48_data seed;
+    
+    //drand48_data
+    unsigned long long int __a;
+    unsigned short int __c;
+    unsigned short int __init;
+    unsigned short int __old_x1;
+    unsigned short int __old_x2;
+    unsigned short int __old_x3;
+    unsigned short int __x1;
+    unsigned short int __x2;
+    unsigned short int __x3;
+    
 } Partial_trajectory;
 
 typedef struct
@@ -75,13 +96,6 @@ void initialize()
     tau = 183/log(2);
 }
 
-/*
-double randomDoubleWithSeed(unsigned int * seed)
-{
-    return (double) rand_r(seed) / RAND_MAX ;
-}
- */
-
 double randomDoubleWithSeed(struct drand48_data * buffer_seed)
 {
     double value;
@@ -91,7 +105,7 @@ double randomDoubleWithSeed(struct drand48_data * buffer_seed)
 
 double distrib(double x, struct drand48_data * buffer_seed)
 {
-	return (-x*log(randomDoubleWithSeed(buffer_seed)));
+    return (-x*log(randomDoubleWithSeed(buffer_seed)));
 }
 
 double Gauss(int * gauss_kon, double * gauss_y, struct drand48_data * buffer_seed)
@@ -120,13 +134,13 @@ double Gauss(int * gauss_kon, double * gauss_y, struct drand48_data * buffer_see
 
 double * speed_maxwell(double am, double te, double * values, struct drand48_data * buffer_seed, int * gauss_kon, double * gauss_y)
 {	
-	double coeff = sqrt(8.314 * te / am);
+    double coeff = sqrt(8.314 * te / am);
 
-	values[0] = Gauss(gauss_kon, gauss_y, buffer_seed)*coeff;
-	values[1] = Gauss(gauss_kon, gauss_y, buffer_seed)*coeff;
-	values[2] = Gauss(gauss_kon, gauss_y, buffer_seed)*coeff;
+    values[0] = Gauss(gauss_kon, gauss_y, buffer_seed)*coeff;
+    values[1] = Gauss(gauss_kon, gauss_y, buffer_seed)*coeff;
+    values[2] = Gauss(gauss_kon, gauss_y, buffer_seed)*coeff;
 
-	return values;
+    return values;
 }
 
 enum DEPORTATION_PLACE in_position(double x, double y, double z)
@@ -155,16 +169,16 @@ double distance(Particle * p1, Particle * p2)
 
 void initialize_particle(Particle * particle, int id, double tau, double r, struct drand48_data * buffer_seed)
 {
-	particle->id = id;
-	particle->life_time = 0.0;
-	particle->half_life = distrib(tau, buffer_seed);
-	particle->status = INIT;
+    particle->id = id;
+    particle->life_time = 0.0;
+    particle->half_life = distrib(tau, buffer_seed);
+    particle->status = INIT;
 
-	particle->z = 1.e-2 * randomDoubleWithSeed(buffer_seed);
-	double rr = r * sqrt(randomDoubleWithSeed(buffer_seed));
-	double fir = 2 * M_PI * randomDoubleWithSeed(buffer_seed);
-	particle->x = rr * cos(fir);
-	particle->y = rr * sin(fir);
+    particle->z = 1.e-2 * randomDoubleWithSeed(buffer_seed);
+    double rr = r * sqrt(randomDoubleWithSeed(buffer_seed));
+    double fir = 2 * M_PI * randomDoubleWithSeed(buffer_seed);
+    particle->x = rr * cos(fir);
+    particle->y = rr * sin(fir);
 }
 
 void set(Particle * p, double x, double y, double z)
@@ -187,7 +201,7 @@ int checkDepositionPlace(Particle * particle, int nPathPoints, struct drand48_da
     double fi0, theta0;
     double v_magnitude;
     double * v = (double * )calloc(3, sizeof(double));
-    double lifeTimeStepSum = 0.0;
+    //double lifeTimeStepSum = 0.0;
     double xTemp, yTemp, zTemp;
     int gauss_kon = 1;
     double gauss_y = 0.0;
@@ -279,7 +293,7 @@ int checkDepositionPlace(Particle * particle, int nPathPoints, struct drand48_da
         return 1;
 }
 
-Partial_trajectory * generatePartialTrajectory(int * gauss_kon, double * gauss_y, int nPathPoints, struct drand48_data * buffer_seed)
+void generatePartialTrajectory(Partial_trajectory * partial_trajectory, int * gauss_kon, double * gauss_y, int nPathPoints, struct drand48_data * buffer_seed)
 {
     double impactDistance = 0.0;
     double fi0, theta0;
@@ -287,10 +301,7 @@ Partial_trajectory * generatePartialTrajectory(int * gauss_kon, double * gauss_y
     double * v = (double * )calloc(3, sizeof(double));
     double lifeTimeStepSum = 0.0;
     
-    Partial_trajectory * partial_trajectory = 
-            (Partial_trajectory *)malloc(sizeof(Partial_trajectory));
-    
-    struct drand48_data seedPathStart = * buffer_seed; 
+    struct drand48_data seedPathStart = *buffer_seed; 
     
     double xMin = DBL_MAX;
     double xMax = -DBL_MAX;
@@ -330,6 +341,8 @@ Partial_trajectory * generatePartialTrajectory(int * gauss_kon, double * gauss_y
         lifeTimeStepSum += (impactDistance / v_magnitude);
     }
     
+    free(v);
+    
     partial_trajectory->xMin = xMin;
     partial_trajectory->xMax = xMax;
     partial_trajectory->yMin = yMin;
@@ -340,11 +353,15 @@ Partial_trajectory * generatePartialTrajectory(int * gauss_kon, double * gauss_y
     partial_trajectory->yLast = yLast;
     partial_trajectory->zLast = zLast;
     partial_trajectory->lifeTimeStepSum = lifeTimeStepSum;
-    partial_trajectory->seed = seedPathStart;
-    
-    free(v);
-    
-    return  partial_trajectory;
+    partial_trajectory->__a = seedPathStart.__a;
+    partial_trajectory->__c = seedPathStart.__c;
+    partial_trajectory->__init = seedPathStart.__init;
+    partial_trajectory->__old_x1 = seedPathStart.__old_x[0];
+    partial_trajectory->__old_x2 = seedPathStart.__old_x[1];
+    partial_trajectory->__old_x3 = seedPathStart.__old_x[2];
+    partial_trajectory->__x1 = seedPathStart.__x[0];
+    partial_trajectory->__x2 = seedPathStart.__x[1];
+    partial_trajectory->__x3 = seedPathStart.__x[2];
 }
 
 enum DEPORTATION_PLACE checkBoundingBox(Particle * particle, Partial_trajectory * partial_trajectory)
@@ -434,7 +451,7 @@ enum DEPORTATION_PLACE checkBoundingBox(Particle * particle, Partial_trajectory 
 void * waitForSignal(void * t)
 {
     int n;
-    MPI_Recv(&n, 1, MPI_INT, 0, 5, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(&n, 1, MPI_INT, 0, SIMULATION_END, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     
     int * running = (int * ) t;
     *running = 0;
@@ -442,7 +459,6 @@ void * waitForSignal(void * t)
 
 void putPointerAfterColon(char ** s_tmp)
 {
-    int i = 0;
     while(**s_tmp != ':')
         (*s_tmp)++;
     (*s_tmp)++;
@@ -507,3 +523,135 @@ Conf * readConf(char fileName[])
     
     return conf;
 }
+
+void createMpiTypeForParticle(MPI_Datatype  * dt_particle)
+{
+    int          blocklengths[3];
+    MPI_Aint     offsets[3], extent;
+    MPI_Datatype types[3];
+    
+    types[0] = MPI_INT;
+    blocklengths[0] = 1;
+    offsets[0] = 0;
+    
+    types[1] = MPI_DOUBLE;
+    blocklengths[1] = 5;
+    MPI_Type_extent(MPI_INT, &extent);
+    offsets[1] = extent;
+
+    types[2] = MPI_SHORT_INT;
+    blocklengths[2] = 1;
+    MPI_Type_extent(MPI_DOUBLE, &extent);
+    offsets[2] = offsets[1] + 5 * extent;    
+    
+    MPI_Type_create_struct(3, blocklengths, offsets, types, dt_particle);
+    MPI_Type_commit(dt_particle);  
+}
+
+void createMpiTypeForPartialTrajectory(MPI_Datatype  * dt_partial_trajectory)
+{
+    int          blocklengths[3];
+    MPI_Aint     offsets[3], extent;
+    MPI_Datatype types[3];
+    
+    types[0] = MPI_DOUBLE;
+    blocklengths[0] = 10;
+    offsets[0] = 0;
+    
+    types[1] = MPI_UNSIGNED_LONG_LONG;
+    blocklengths[1] = 1;
+    MPI_Type_extent(MPI_DOUBLE, &extent); 
+    offsets[1] = 10 * extent;
+    
+    types[2] = MPI_UNSIGNED_SHORT;
+    blocklengths[2] = 8;
+    MPI_Type_extent(MPI_UNSIGNED_LONG_LONG, &extent);
+    offsets[2] = offsets[1] + extent;
+
+    MPI_Type_create_struct(3, blocklengths, offsets, types, dt_partial_trajectory);
+    MPI_Type_commit(dt_partial_trajectory);
+}
+
+void initializeSeed(struct drand48_data * seed, Partial_trajectory * partialTrajectory)
+{
+    seed->__a = partialTrajectory->__a;
+    seed->__c = partialTrajectory->__c;
+    seed->__init = partialTrajectory->__init;
+    seed->__old_x[0] = partialTrajectory->__old_x1;
+    seed->__old_x[1] = partialTrajectory->__old_x2;
+    seed->__old_x[2] = partialTrajectory->__old_x3;
+    seed->__x[0] = partialTrajectory->__x1;
+    seed->__x[1] = partialTrajectory->__x2;
+    seed->__x[2] = partialTrajectory->__x3;
+}
+
+void printPartialTrajectory(Partial_trajectory * partial_trajectory)
+{
+    printf("lifeTimeStepSum = %lf \n", partial_trajectory->lifeTimeStepSum);
+    printf("seed.__a = %llu \n", partial_trajectory->__a);
+    printf("seed.__c = %hu \n", partial_trajectory->__c);
+    printf("seed.__init = %hu \n", partial_trajectory->__init);
+    
+    printf("old_x = %hu \n", partial_trajectory->__old_x1);
+    printf("old_x = %hu \n", partial_trajectory->__old_x2);
+    printf("old_x = %hu \n", partial_trajectory->__old_x3);
+    
+    printf("__x = %hu \n", partial_trajectory->__x1);
+    printf("__x = %hu \n", partial_trajectory->__x2);
+    printf("__x = %hu \n", partial_trajectory->__x3);
+}
+
+void sendDepositionStatistics(int nAir, int nBottom, int nTop, int nWall)
+{
+     MPI_Send(&nAir, 1, MPI_INT, 0, AIR, MPI_COMM_WORLD); 
+     MPI_Send(&nBottom, 1, MPI_INT, 0, BOTTOM, MPI_COMM_WORLD); 
+     MPI_Send(&nTop, 1, MPI_INT, 0, TOP, MPI_COMM_WORLD); 
+     MPI_Send(&nWall, 1, MPI_INT, 0, WALL, MPI_COMM_WORLD); 
+}
+
+void getDepositionStatistics(Conf * conf)
+{
+    int i;
+    MPI_Status status;
+    int nAir, nBottom, nTop, nWall;
+    int nAirTmp, nBottomTmp, nTopTmp, nWallTmp;
+    nAir = nBottom = nTop = nWall = 0;
+    
+    for(i = 1; i <= conf->consumerCount; i++)
+    {   
+        MPI_Recv(&nAirTmp, 1, MPI_INT, i, AIR, MPI_COMM_WORLD, &status);
+        MPI_Recv(&nBottomTmp, 1, MPI_INT, i, BOTTOM, MPI_COMM_WORLD, &status);
+        MPI_Recv(&nTopTmp, 1, MPI_INT, i, TOP, MPI_COMM_WORLD, &status);
+        MPI_Recv(&nWallTmp, 1, MPI_INT, i, WALL, MPI_COMM_WORLD, &status);
+        
+        nAir += nAirTmp;
+        nBottom += nBottomTmp;
+        nTop += nTopTmp;
+        nWall += nWallTmp;
+    }
+    printf("\n****** Statistika deponovanja ****** \n\n");
+    printf(" nAir = %d,\n nBottom = %d,\n nTop = %d,\n nWall = %d\n", nAir, nBottom, nTop, nWall);
+    printf("\n************************************ \n");
+}
+
+void writeTrajectoryStatistics(int producerCount, int processedTrajectoriesCount, int rank)
+{
+    int globalProducerCount;
+    MPI_Reduce( &producerCount, &globalProducerCount, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD );
+    
+    if(rank == 0)
+    {
+        printf("\n****** Statistika putanja  ********* \n\n");
+        printf("   Broj proizvedenih putanja :  %d\n", globalProducerCount);
+        printf("   Broj obradjenih   putanja :  %d\n", processedTrajectoriesCount);
+        printf("\n************************************ \n\n");
+    }
+}
+
+void * consumerListener(void * p);
+void initialParticlePositionObserver(Conf * conf, int * running);
+void runQueue(Conf * conf, int consumerCount, int producerCount);
+void simulateParticles( int rank, Conf * conf);
+void generatePathTrajektories(int rank,int partialTrajectoryLength);
+void createMpiTypeForPartialTrajectory(MPI_Datatype  * dt_partial_trajectory);
+void createMpiTypeForParticle(MPI_Datatype  * dt_particle);

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-rm rezultat.csv
+rm rezultat_*.csv
 rm SimulacijaCesticaJob*
 
 nodeCount=`python readJsonValue.py conf.json nodeCount`
