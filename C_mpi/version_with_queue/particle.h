@@ -38,14 +38,13 @@ enum MESSAGE_TYPE
 
 typedef struct
 {
-    int id;
     double life_time;
     double half_life;
-
     double z;
     double x;
     double y;
     
+    int id;
     enum DEPORTATION_PLACE status;
 
 } Particle;
@@ -527,23 +526,23 @@ Conf * readConf(char fileName[])
 void createMpiTypeForParticle(MPI_Datatype  * dt_particle)
 {
     int          blocklengths[3];
-    MPI_Aint     offsets[3], extent;
+    MPI_Aint     offsets[3], intExtent, doubleExtent;
     MPI_Datatype types[3];
     
-    types[0] = MPI_INT;
-    blocklengths[0] = 1;
     offsets[0] = 0;
+    types[0] = MPI_DOUBLE;
+    blocklengths[0] = 5;
     
-    types[1] = MPI_DOUBLE;
-    blocklengths[1] = 5;
-    MPI_Type_extent(MPI_INT, &extent);
-    offsets[1] = extent;
+    MPI_Type_extent(MPI_INT, &doubleExtent);
+    offsets[1] = 5 * doubleExtent;
+    types[1] = MPI_INT;
+    blocklengths[1] = 1;
 
+    MPI_Type_extent(MPI_DOUBLE, &doubleExtent);
+    offsets[2] = intExtent +  5 * doubleExtent;
     types[2] = MPI_SHORT_INT;
     blocklengths[2] = 1;
-    MPI_Type_extent(MPI_DOUBLE, &extent);
-    offsets[2] = offsets[1] + 5 * extent;    
-    
+
     MPI_Type_create_struct(3, blocklengths, offsets, types, dt_particle);
     MPI_Type_commit(dt_particle);  
 }
