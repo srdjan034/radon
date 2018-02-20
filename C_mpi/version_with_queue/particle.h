@@ -449,8 +449,14 @@ enum DEPORTATION_PLACE checkBoundingBox(Particle * particle, Partial_trajectory 
 
 void * waitForSignal(void * t)
 {
-    int n;
-    MPI_Recv(&n, 1, MPI_INT, 0, SIMULATION_END, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Status status;
+    int flag = 0;
+    
+    while(flag == 0)
+    {
+        MPI_Iprobe(0, SIMULATION_END, MPI_COMM_WORLD, &flag, &status);
+        sleep(1);
+    }
     
     int * running = (int * ) t;
     *running = 0;
