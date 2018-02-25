@@ -3,7 +3,6 @@
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <pthread.h>
 #include <float.h>
 #include <unistd.h>
 #include <mpi.h> 
@@ -447,21 +446,6 @@ enum DEPORTATION_PLACE checkBoundingBox(Particle * particle, Partial_trajectory 
    return p;
 }
 
-void * waitForSignal(void * t)
-{
-    MPI_Status status;
-    int flag = 0;
-    
-    while(flag == 0)
-    {
-        MPI_Iprobe(0, SIMULATION_END, MPI_COMM_WORLD, &flag, &status);
-        sleep(1);
-    }
-    
-    int * running = (int * ) t;
-    *running = 0;
-}
-
 void putPointerAfterColon(char ** s_tmp)
 {
     while(**s_tmp != ':')
@@ -539,12 +523,12 @@ void createMpiTypeForParticle(MPI_Datatype  * dt_particle)
     types[0] = MPI_DOUBLE;
     blocklengths[0] = 5;
     
-    MPI_Type_extent(MPI_INT, &doubleExtent);
+    MPI_Type_extent(MPI_DOUBLE, &doubleExtent);
     offsets[1] = 5 * doubleExtent;
     types[1] = MPI_INT;
     blocklengths[1] = 1;
 
-    MPI_Type_extent(MPI_DOUBLE, &doubleExtent);
+    MPI_Type_extent(MPI_INT, &intExtent);
     offsets[2] = intExtent +  5 * doubleExtent;
     types[2] = MPI_SHORT_INT;
     blocklengths[2] = 1;
@@ -653,8 +637,17 @@ void writeTrajectoryStatistics(int producerCount, int processedTrajectoriesCount
     }
 }
 
-void * consumerListener(void * p);
-void initialParticlePositionObserver(Conf * conf, int * running);
+void printParticle(Particle * p)
+{
+    printf("id = %d\n", p->id);
+    printf("half_life = %10lf\n", p->half_life);
+    printf("life_time = %10lf\n", p->life_time);
+    printf("x = %10lf\n", p->x);
+    printf("y = %10lf\n", p->y);
+    printf("z = %10lf\n", p->z);
+    printf("status = %hi\n", p->status);
+}
+
 void runQueue(Conf * conf, int consumerCount, int producerCount);
 void simulateParticles( int rank, Conf * conf);
 void generatePathTrajektories(int rank,int partialTrajectoryLength);
