@@ -537,28 +537,28 @@ void createMpiTypeForParticle(MPI_Datatype  * dt_particle)
     MPI_Type_commit(dt_particle);  
 }
 
-void createMpiTypeForParticle(MPI_Datatype  * dt_particle)
+void createMpiTypeForPartialTrajectory(MPI_Datatype  * dt_partial_trajectory)
 {
     int          blocklengths[3];
-    MPI_Aint     offsets[3], intExtent, doubleExtent;
+    MPI_Aint     offsets[3], extent;
     MPI_Datatype types[3];
     
-    offsets[0] = 0;
     types[0] = MPI_DOUBLE;
-    blocklengths[0] = 5;
+    blocklengths[0] = 10;
+    offsets[0] = 0;
     
-    MPI_Type_extent(MPI_DOUBLE, &doubleExtent);
-    offsets[1] = 5 * doubleExtent;
-    types[1] = MPI_INT;
+    types[1] = MPI_UNSIGNED_LONG_LONG;
     blocklengths[1] = 1;
+    MPI_Type_extent(MPI_DOUBLE, &extent); 
+    offsets[1] = 10 * extent;
+    
+    types[2] = MPI_UNSIGNED_SHORT;
+    blocklengths[2] = 8;
+    MPI_Type_extent(MPI_UNSIGNED_LONG_LONG, &extent);
+    offsets[2] = offsets[1] + extent;
 
-    MPI_Type_extent(MPI_INT, &intExtent);
-    offsets[2] = intExtent +  5 * doubleExtent;
-    types[2] = MPI_SHORT_INT;
-    blocklengths[2] = 1;
-
-    MPI_Type_create_struct(3, blocklengths, offsets, types, dt_particle);
-    MPI_Type_commit(dt_particle);  
+    MPI_Type_create_struct(3, blocklengths, offsets, types, dt_partial_trajectory);
+    MPI_Type_commit(dt_partial_trajectory);
 }
 
 void initializeSeed(struct drand48_data * seed, Partial_trajectory * partialTrajectory)
